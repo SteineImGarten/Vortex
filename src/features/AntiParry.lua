@@ -1,84 +1,79 @@
 --[[
-    Combat Warriors - Anti-Parry
-    Suppresses attack events directed at players who have active parry states (detected via parry sounds).
+    Combat Warriors - Anti-Parry
+    Suppresses attack events directed at players who have active parry states (detected via parry sounds).
 ]]
 
 local AntiParry = {}
 
 function AntiParry.Init(Vortex)
-    local Players = game:GetService("Players")
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
-    local LocalPlayer = Players.LocalPlayer
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
 
-    -- Global cache of player character models currently parrying
-    getgenv().RecentParryPlayers = getgenv().RecentParryPlayers or {}
+    -- Global cache of player character models currently parrying
+    getgenv().RecentParryPlayers = getgenv().RecentParryPlayers or {}
 
-    -- Hook outgoing game events to block damage sent to parrying opponents
-    Vortex.Hook(
-        "@Network",
-        "FireServer",
-        "Anti-Hit",
-        function(Original, ...)
+    -- Hook outgoing game events to block damage sent to parrying opponents
+    Vortex.Hook(
+        "@Network",
+        "FireServer",
+        "Anti-Hit",
+        function(Original, ...)
+            local Args = {...}
 
-            if getgenv().AntiParry and select(2, ...) == "MeleeDamage" then
-                local TargetPart = select(4, ...)
-                local PlayerModel = TargetPart and TargetPart.Parent
+            if getgenv().AntiParry and Args[2] == "MeleeDamage" then
+                local TargetPart = Args[4]
+                local PlayerModel = TargetPart and TargetPart.Parent
 
-                if PlayerModel and getgenv().RecentParryPlayers[PlayerModel] then
-                    local storeObj = Vortex.Get("RoduxStore")
-                    if storeObj then
-                        local Message = ("Suppressed %s"):format(PlayerModel.Name)
-                        Vortex.Call("@ToastNotificationActionsClient", "add", "success", Message, 5, true, { BypassHook = false })(storeObj.store)
-                    end
-                    
-                    Vortex.Call("@SoundHandler", "playSound", {
-                        soundObject = ReplicatedStorage.Shared.Assets.Sounds.Success2,
-                        parent = workspace:FindFirstChild("Sounds") or workspace
-                    })
-                    return -- Block hit remote completely
-                end
-            end
+                if PlayerModel and getgenv().RecentParryPlayers[PlayerModel] then
+          
+                    local storeObj = Vortex.Get("RoduxStore")
+                    if storeObj then
+                        local Message = ("Suppressed %s"):format(PlayerModel.Name)
+                        Vortex.Call("@ToastNotificationActionsClient", "add", "success", Message, 5, true, { BypassHook = false })(storeObj.store)
+                    end
+                    
+                    Vortex.Call("@SoundHandler", "playSound", {
+                        soundObject = ReplicatedStorage.Shared.Assets.Sounds.Success2,
+                        parent = workspace:FindFirstChild("Sounds") or workspace
+                    })
+          
+                    return
+                end
+            end
 
-            return Original(...)
-        end,
-        { Spy = false }
-    )
+            return Original(table.unpack(Args))
+        end,
+        { Spy = false }
+    )
 
-    -- Hook sound cues to identify target parry triggers
-    Vortex.Hook(
-        "@SoundHandler",
-        "playSound",
-        "Anti-Parry",
-        function(Original, Data, ...)
-            if getgenv().AntiParry and Data.soundObject.Name == "Parry" then
-                -- Restored your original exact parent walk
-                local PlayerModel = Data.soundObject.Parent.Name == "SemiTransparentShield"
-                print(PlayerModel.Parent.Name)
+    -- Hook sound cues to identify target parry triggers
+    Vortex.Hook(
+        "@SoundHandler",
+        "playSound",
+        "Anti-Parry",
+        function(Original, ...)
+            local Args = {...}
+            local Data = Args[1]
 
-                if PlayerModel and PlayerModel ~= LocalPlayer.Character then
-                    getgenv().RecentParryPlayers[PlayerModel] = true
+            if getgenv().AntiParry and Data and Data.soundObject and Data.soundObject.Name == "Parry" then
+                local Sound = Data.soundObject
+                local PlayerModel = Data.parent and Data.parent.Parent and Data.parent.Parent.Parent
 
-                    local storeObj = Vortex.Get("RoduxStore")
-                    if storeObj then
-                        local Message = ("Suppressed in Exclusion List %s"):format(PlayerModel.Name)
-                        Vortex.Call("@ToastNotificationActionsClient", "add", "success", Message, 5, true, { BypassHook = false })(storeObj.store)
-                    end
-                    
-                    Vortex.Call("@SoundHandler", "playSound", {
-                        soundObject = ReplicatedStorage.Shared.Assets.Sounds.Success2,
-                        parent = workspace:FindFirstChild("Sounds") or workspace
-                    })
+                if Sound and PlayerModel and PlayerModel ~= LocalPlayer.Character then
+                    -- Record target parry window state
+                    getgenv().RecentParryPlayers[PlayerModel] = true
 
-                    task.delay(0.2, function()
-                        getgenv().RecentParryPlayers[PlayerModel] = nil
-                    end)
-                end
-            end
+                    -- Reset parry window block state after 200ms
+                    task.delay(0.2, function()
+                        getgenv().RecentParryPlayers[PlayerModel] = nil
+                    end)
+                end
+            end
 
-            return Original(Data, ...)
-        end,
-        { Spy = false }
-    )
+            return Original(...)
+        end,
+        { Spy = false }
+    )
 end
 
 return AntiParry
