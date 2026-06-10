@@ -5,9 +5,9 @@
 
 local AntiRagdoll = {}
 
-function AntiRagdoll.Init(FrameWork)
+function AntiRagdoll.Init(Vortex)
     -- Hook Shared Ragdoll handler using simplified framework hook method
-    FrameWork.Hook(
+    Vortex.Hook(
         "@RagdollHandler",
         "toggleRagdoll",
         function(Original, ...)
@@ -19,7 +19,7 @@ function AntiRagdoll.Init(FrameWork)
     )
 
     -- Hook Client-specific Ragdoll handler
-    FrameWork.Hook(
+    Vortex.Hook(
         "@RagdollHandlerClient",
         "toggleRagdoll",
         function(Original, ...)
