@@ -13,19 +13,19 @@ function AntiParry.Init(Vortex)
     -- Global cache of player character models currently parrying
     getgenv().RecentParryPlayers = getgenv().RecentParryPlayers or {}
 
-    -- Hook outgoing game events to block or delay damage sent to parrying opponents
+    -- Hook outgoing game events to block damage sent to parrying opponents
     Vortex.Hook(
         "@Network",
         "FireServer",
         "Anti-Hit",
         function(Original, ...)
-            -- Match your original exact parameter indexing via select()
+            -- UNTOUCHED: This is your exact original condition statement
             if getgenv().AntiParry and select(2, ...) == "MeleeDamage" then
                 local TargetPart = select(4, ...)
                 local PlayerModel = TargetPart and TargetPart.Parent
 
                 if PlayerModel then
-                    -- If they are already parrying, drop the hit instantly
+                    -- 1. Immediate check: if already parrying, drop instantly
                     if getgenv().RecentParryPlayers[PlayerModel] then
                         local storeObj = Vortex.Get("RoduxStore")
                         if storeObj then
@@ -37,15 +37,14 @@ function AntiParry.Init(Vortex)
                             soundObject = ReplicatedStorage.Shared.Assets.Sounds.Success2,
                             parent = workspace:FindFirstChild("Sounds") or workspace
                         })
-                        return -- Drop the call
+                        return -- Block hit remote completely
                     end
 
-                    -- Pack the tuple so it can be safely deferred inside the task thread
-                    local PackedArgs = table.pack(...)
-
-                    -- Defer the event fire execution by 100ms
+                    -- 2. Delay Execution: Save the parameters exactly as they are right now
+                    local Args = {Original, ...} 
+                    
                     task.delay(0.1, function()
-                        -- Re-verify their parry state after the 100ms window has completed
+                        -- Re-verify if they managed to parry within the 100ms window
                         if getgenv().AntiParry and getgenv().RecentParryPlayers[PlayerModel] then
                             local storeObj = Vortex.Get("RoduxStore")
                             if storeObj then
@@ -55,11 +54,12 @@ function AntiParry.Init(Vortex)
                             return -- Block the delayed hit from firing
                         end
                         
-                        -- Fire the original remote function with all original arguments intact
-                        Original(table.unpack(PackedArgs, 1, PackedArgs.n))
+                        -- Execute the original function with its pristine parameters
+                        local OrigFunc = Args[1]
+                        OrigFunc(unpack(Args, 2))
                     end)
 
-                    return -- Intercept and prevent the immediate default execution loop
+                    return -- Stop the original immediate fire execution
                 end
             end
 
