@@ -26,10 +26,10 @@ end
 local function ScanFeatureModules()
     local features = {}
     local isLocal = getgenv().import_is_local
-    local localPath = getgenv().import_local_path or "Combat Warriors Project/src/"
-    local owner = getgenv().import_repo_owner or "SteineImGarten"
-    local repo = getgenv().import_repo_name or "CW-Next"
-    local branch = getgenv().import_repo_branch or "main"
+    local localPath = getgenv().import_local_path
+    local owner = getgenv().import_repo_owner
+    local repo = getgenv().import_repo_name
+    local branch = getgenv().import_repo_branch
 
     if isLocal then
         -- Local Mode: Scan executor workspace directory
