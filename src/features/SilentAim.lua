@@ -5,24 +5,24 @@
 
 local SilentAim = {}
 
-function SilentAim.Init(FrameWork)
+function SilentAim.Init(Vortex)
     local Players = game:GetService("Players")
     local LocalPlayer = Players.LocalPlayer
 
     -- Bind key listener to log silent aim state changes
-    FrameWork.Signals.FeatureToggled:Connect(function(featureName, state)
+    Vortex.Signals.FeatureToggled:Connect(function(featureName, state)
         if featureName == "SilentAim" then
             print("[SilentAim] Toggled State:", state)
         end
     end)
 
     -- Hook Ranged Weapon Fire Direction
-    FrameWork.Hook(
+    Vortex.Hook(
         "@RangedWeaponHandler",
         "calculateFireDirection",
         "SilentAim",
         function(Original, ...)
-            local Ranged, MetaData = FrameWork.RangedWeapon()
+            local Ranged, MetaData = Vortex.RangedWeapon()
             local Args = { ... }
 
             if typeof(Args[1]) == "CFrame" and getgenv().SilentAim then
@@ -33,19 +33,19 @@ function SilentAim.Init(FrameWork)
 
                     if Origin then
                         -- Query closest target inside screen FOV
-                        local Target = FrameWork.MouseTarget(nil, getgenv().FOV)
+                        local Target = Vortex.MouseTarget(nil, getgenv().FOV)
                         if Target and Target.Character then
                             local TargetPartName = getgenv().HitPart or "HumanoidRootPart"
                             local TargetPart = Target.Character:FindFirstChild(TargetPartName)
                             
                             if TargetPart then
                                 -- Project Aim Vector using Kalman physics prediction integrated in Vortex
-                                Args[1] = FrameWork.Predict(
+                                Args[1] = Vortex.Predict(
                                     TargetPart,
                                     Origin,
                                     Speed,
                                     false,
-                                    Vector3.new(0, -5, 0) -- Vertical Gravity force vector
+                                    Vector3.new(0, 0, 0) -- Vertical Gravity force vector
                                 )
                             end
                         end
@@ -59,7 +59,7 @@ function SilentAim.Init(FrameWork)
     )
 
     -- Hook Ranged Weapon Reload Handler
-    FrameWork.Hook(
+    Vortex.Hook(
         "@RangedWeaponClient",
         "cancelReload",
         "SilentAimCancel",
