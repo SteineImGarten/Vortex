@@ -57,6 +57,17 @@ function AntiParry.Init(Vortex)
                 if PlayerModel and PlayerModel ~= LocalPlayer.Character then
                     getgenv().RecentParryPlayers[PlayerModel] = true
 
+                    local storeObj = Vortex.Get("RoduxStore")
+                    if storeObj then
+                        local Message = ("Suppressed in Exclusion List %s"):format(PlayerModel.Name)
+                        Vortex.Call("@ToastNotificationActionsClient", "add", "success", Message, 5, true, { BypassHook = false })(storeObj.store)
+                    end
+                    
+                    Vortex.Call("@SoundHandler", "playSound", {
+                        soundObject = ReplicatedStorage.Shared.Assets.Sounds.Success2,
+                        parent = workspace:FindFirstChild("Sounds") or workspace
+                    })
+
                     task.delay(0.2, function()
                         getgenv().RecentParryPlayers[PlayerModel] = nil
                     end)
