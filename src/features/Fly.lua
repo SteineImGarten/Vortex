@@ -5,7 +5,7 @@
 
 local Fly = {}
 
-function Fly.Init(FrameWork)
+function Fly.Init(Vortex)
     local UserInputService = game:GetService("UserInputService")
     local RunService = game:GetService("RunService")
     local Players = game:GetService("Players")
@@ -25,7 +25,7 @@ function Fly.Init(FrameWork)
                 Attachment.Parent = HRP
                 
                 -- Call AntiCheatHandler via simplified framework method
-                local LinearVelocity = FrameWork.Call("@AntiCheatHandler", "createBodyMover", "LinearVelocity")  
+                local LinearVelocity = Vortex.Call("@AntiCheatHandler", "createBodyMover", "LinearVelocity")  
                 if LinearVelocity then
                     LinearVelocity.Name = "flyVel"  
                     LinearVelocity.Attachment0 = Attachment  
@@ -47,7 +47,7 @@ function Fly.Init(FrameWork)
     end
 
     -- Listen to the central FeatureToggled signal
-    FrameWork.Signals.FeatureToggled:Connect(function(featureName, state)
+    Vortex.Signals.FeatureToggled:Connect(function(featureName, state)
         if featureName == "Fly" then
             FlyEnabled = state
             UpdateFlightState()
