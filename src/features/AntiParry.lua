@@ -53,6 +53,7 @@ function AntiParry.Init(Vortex)
             if getgenv().AntiParry and Data.soundObject.Name == "Parry" then
                 -- Restored your original exact parent walk
                 local PlayerModel = Data.soundObject.Parent.Name == "SemiTransparentShield"
+                print(PlayerModel.Parent.Name)
 
                 if PlayerModel and PlayerModel ~= LocalPlayer.Character then
                     getgenv().RecentParryPlayers[PlayerModel] = true
