@@ -1,5 +1,5 @@
 --[[
-    Vortex Framework - Core Engine
+    Vortex Framework - Core Engine (Production Release Build)
     Universal modular script engine with built-in hooking, PsmSignal event-driven design,
     predictive math, and decoupled game adapters.
 ]]
@@ -11,95 +11,102 @@ local Workspace = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
 local HttpService = game:GetService("HttpService")
 
-local Vortex = {}
-Vortex.Adapters = {}
-Vortex.Signals = {}
+local globalEnv = getgenv or function() return _G end
+
+local Vortex = globalEnv()._VortexCoreInstance or {}
+Vortex.Adapters = Vortex.Adapters or {}
+Vortex.Signals = Vortex.Signals or {}
+
+Vortex._InternalStorage = Vortex._InternalStorage or {
+    Originals = {},
+    Wrapped = {}
+}
+Vortex._HookRegistry = Vortex._HookRegistry or {}
+Vortex._LoaderCache = Vortex._LoaderCache or {}
+Vortex._LoadedModules = Vortex._LoadedModules or {}
+Vortex.Keybinds = Vortex.Keybinds or {}
+Vortex.State = Vortex.State or {}
+
+globalEnv()._VortexCoreInstance = Vortex
 
 --------------------------------------------------------------------------------
 -- 1. PsmSignal Class Implementation
 --------------------------------------------------------------------------------
 
-local PsmSignal = {}
-PsmSignal.__index = PsmSignal
+local PsmSignal = Vortex.PsmSignal or {}
+if not PsmSignal.__index then
+    PsmSignal.__index = PsmSignal
 
-function PsmSignal.new()
-    local self = setmetatable({}, PsmSignal)
-    self._connections = {}
-    return self
-end
+    function PsmSignal.new()
+        local self = setmetatable({}, PsmSignal)
+        self._connections = {}
+        return self
+    end
 
-function PsmSignal:Connect(callback)
-    local connection = {
-        Callback = callback,
-        Connected = true,
-        Disconnect = function(conn)
-            conn.Connected = false
-            for i, c in ipairs(self._connections) do
-                if c == conn then
-                    table.remove(self._connections, i)
-                    break
+    function PsmSignal:Connect(callback)
+        local connection = {
+            Callback = callback,
+            Connected = true,
+            Disconnect = function(conn)
+                conn.Connected = false
+                for i, c in ipairs(self._connections) do
+                    if c == conn then
+                        table.remove(self._connections, i)
+                        break
+                    end
                 end
             end
-        end
-    }
-    table.insert(self._connections, connection)
-    return connection
-end
+        }
+        table.insert(self._connections, connection)
+        return connection
+    end
 
-function PsmSignal:Once(callback)
-    local connection
-    connection = self:Connect(function(...)
-        if connection then
+    function PsmSignal:Once(callback)
+        local connection
+        connection = self:Connect(function(...)
+            if connection then
+                connection:Disconnect()
+            end
+            callback(...)
+        end)
+        return connection
+    end
+
+    function PsmSignal:Wait()
+        local thread = coroutine.running()
+        local connection
+        connection = self:Connect(function(...)
             connection:Disconnect()
-        end
-        callback(...)
-    end)
-    return connection
-end
+            task.spawn(thread, ...)
+        end)
+        return coroutine.yield()
+    end
 
-function PsmSignal:Wait()
-    local thread = coroutine.running()
-    local connection
-    connection = self:Connect(function(...)
-        connection:Disconnect()
-        task.spawn(thread, ...)
-    end)
-    return coroutine.yield()
-end
-
-function PsmSignal:Fire(...)
-    local connections = table.clone(self._connections)
-    for _, conn in ipairs(connections) do
-        if conn.Connected then
-            task.spawn(conn.Callback, ...)
+    function PsmSignal:Fire(...)
+        local connections = table.clone(self._connections)
+        for _, conn in ipairs(connections) do
+            if conn.Connected then
+                task.spawn(conn.Callback, ...)
+            end
         end
     end
+
+    Vortex.PsmSignal = PsmSignal
+    Vortex.Signal = PsmSignal
+    globalEnv().PsmSignal = PsmSignal
+    globalEnv().Signal = PsmSignal
 end
 
-Vortex.PsmSignal = PsmSignal
-Vortex.Signal = PsmSignal
-
-local globalEnv = getgenv or function() return _G end
-globalEnv().PsmSignal = PsmSignal
-globalEnv().Signal = PsmSignal
-
+--------------------------------------------------------------------------------
+-- 2. Core Signals
 --------------------------------------------------------------------------------
 
-Vortex.Signals.FeatureToggled = PsmSignal.new()
-Vortex.Signals.FrameworkLoaded = PsmSignal.new()
+Vortex.Signals.FeatureToggled = Vortex.Signals.FeatureToggled or PsmSignal.new()
+Vortex.Signals.FrameworkLoaded = Vortex.Signals.FrameworkLoaded or PsmSignal.new()
 
 --------------------------------------------------------------------------------
-
-
-local GlobalTable = globalEnv()
-
-GlobalTable._LoaderCache = GlobalTable._LoaderCache or {}
-GlobalTable._HookRegistry = GlobalTable._HookRegistry or {}
-
-GlobalTable._InternalStorage = GlobalTable._InternalStorage or {
-    Originals = {},
-    Wrapped = {}
-}
+-- 3. Core Engine Configuration & Logic
+--------------------------------------------------------------------------------
 
 local Debug = false
 local SpyEnabled = false
@@ -118,13 +125,6 @@ end
 
 function Vortex.Folders(List)
     Folders = List or {}
-end
-
-function Vortex.Global(Table)
-    if type(Table) == "table" then
-        GlobalTable = Table
-        GlobalTable._HookRegistry = GlobalTable._HookRegistry or {}
-    end
 end
 
 local function SafeRequire(Module)
@@ -258,7 +258,7 @@ local function WrapWithSpy(ModuleKey, Mod, FuncName)
 end
 
 local function ApplyGlobalSpy()
-    for ModuleKey, Mod in pairs(GlobalTable) do
+    for ModuleKey, Mod in pairs(Vortex._LoadedModules) do
         if type(ModuleKey) == "string" and ModuleKey:sub(1, 1) == "@" and type(Mod) == "table" then
             for FuncName, Value in pairs(Mod) do
                 if type(Value) == "function" then
@@ -298,7 +298,7 @@ function Vortex.Load()
     end
 
     for Key, Val in pairs(Mods) do
-        GlobalTable[Key] = Val
+        Vortex._LoadedModules[Key] = Val
     end
 
     if Debug then
@@ -307,7 +307,9 @@ function Vortex.Load()
         print("[Vortex] Total modules loaded:", Count)
     end
 
-    GlobalTable.LOAD_FINISHED = true
+    Vortex.LOAD_FINISHED = true
+    Vortex.Signals.FrameworkLoaded:Fire()
+    
     return Mods
 end
 
@@ -321,15 +323,16 @@ function Vortex.Call(ModuleKey, FunctionName, ...)
         if Debug then PrintArgs(Args) end
     end
 
-    local Mod = GlobalTable[ModuleKey]
+    local Mod = Vortex._LoadedModules[ModuleKey]
     if not Mod then
         warn(("[Vortex] Module '%s' not found"):format(ModuleKey))
         return nil
     end
 
     local Func
-    if BypassHook and Mod._OriginalFunctions and Mod._OriginalFunctions[FunctionName] then
-        Func = Mod._OriginalFunctions[FunctionName]
+    local StorageKey = ModuleKey .. "." .. FunctionName
+    if BypassHook and Vortex._InternalStorage.Originals[StorageKey] then
+        Func = Vortex._InternalStorage.Originals[StorageKey]
     else
         Func = Mod[FunctionName]
     end
@@ -351,7 +354,7 @@ function Vortex.Hook(ModuleKey, FunctionName, HookID, HookFunc, Config)
     Config = Config or {}
     HookID = HookID or "Default"
 
-    local Mod = GlobalTable[ModuleKey]
+    local Mod = Vortex._LoadedModules[ModuleKey] or globalEnv()[ModuleKey]
     if not Mod then
         warn(("[Vortex] Module '%s' not found"):format(ModuleKey))
         return nil
@@ -363,12 +366,10 @@ function Vortex.Hook(ModuleKey, FunctionName, HookID, HookFunc, Config)
         return nil
     end
 
-    -- Setup internal registry for managing multiple hooks
-    GlobalTable._HookRegistry = GlobalTable._HookRegistry or {}
-    GlobalTable._HookRegistry[ModuleKey] = GlobalTable._HookRegistry[ModuleKey] or {}
-    GlobalTable._HookRegistry[ModuleKey][FunctionName] = GlobalTable._HookRegistry[ModuleKey][FunctionName] or {}
+    Vortex._HookRegistry[ModuleKey] = Vortex._HookRegistry[ModuleKey] or {}
+    Vortex._HookRegistry[ModuleKey][FunctionName] = Vortex._HookRegistry[ModuleKey][FunctionName] or {}
 
-    local HookTable = GlobalTable._HookRegistry[ModuleKey][FunctionName]
+    local HookTable = Vortex._HookRegistry[ModuleKey][FunctionName]
     local StorageKey = ModuleKey .. "." .. FunctionName
 
     if HookTable[HookID] then
@@ -376,7 +377,7 @@ function Vortex.Hook(ModuleKey, FunctionName, HookID, HookFunc, Config)
         HookTable[HookID].Config = Config
         HookTable[HookID].Priority = Config.Priority or 0
         HookTable[HookID].Active = true
-        return GlobalTable._InternalStorage.Originals[StorageKey]
+        return Vortex._InternalStorage.Originals[StorageKey]
     end
 
     HookTable[HookID] = {
@@ -387,11 +388,11 @@ function Vortex.Hook(ModuleKey, FunctionName, HookID, HookFunc, Config)
         Priority = Config.Priority or 0
     }
 
-    if GlobalTable._InternalStorage.Wrapped[StorageKey] then
-        return GlobalTable._InternalStorage.Originals[StorageKey]
+    if Vortex._InternalStorage.Wrapped[StorageKey] then
+        return Vortex._InternalStorage.Originals[StorageKey]
     end
 
-    GlobalTable._InternalStorage.Wrapped[StorageKey] = true
+    Vortex._InternalStorage.Wrapped[StorageKey] = true
 
     local function SafeCall(Func, ...)
         local ok, result = pcall(Func, ...)
@@ -418,7 +419,7 @@ function Vortex.Hook(ModuleKey, FunctionName, HookID, HookFunc, Config)
 
     local function Wrapper(...)
         local HookData = GetActiveHook()
-        local baseFunc = GlobalTable._InternalStorage.Originals[StorageKey] or OrigFunc
+        local baseFunc = Vortex._InternalStorage.Originals[StorageKey] or OrigFunc
         
         if not HookData then
             return baseFunc(...)
@@ -443,48 +444,41 @@ function Vortex.Hook(ModuleKey, FunctionName, HookID, HookFunc, Config)
         return SafeCall(HookFn, baseFunc, ...)
     end
 
-    -- Apply the hook using internal environment tables only
     if oth and oth.hook and isCClosureFunc(OrigFunc) then
         local backup = oth.hook(OrigFunc, Wrapper)
-        GlobalTable._InternalStorage.Originals[StorageKey] = backup
+        Vortex._InternalStorage.Originals[StorageKey] = backup
     elseif hookfunction then
         local nativeWrapper = newcclosure and newcclosure(Wrapper) or Wrapper
         local backup = hookfunction(OrigFunc, nativeWrapper)
-        GlobalTable._InternalStorage.Originals[StorageKey] = backup
+        Vortex._InternalStorage.Originals[StorageKey] = backup
     else
-        -- Fallback method (Warning: Modifies the table index directly if your platform lacks standard hook functions)
-        GlobalTable._InternalStorage.Originals[StorageKey] = OrigFunc
+        Vortex._InternalStorage.Originals[StorageKey] = OrigFunc
         Mod[FunctionName] = Wrapper
     end
 
-    if Debug then
-        print(("[Vortex] Hook applied: %s -> %s [ID=%s]"):format(ModuleKey, FunctionName, HookID))
-    end
-
-    return GlobalTable._InternalStorage.Originals[StorageKey]
+    return Vortex._InternalStorage.Originals[StorageKey]
 end
 
 function Vortex.UnHook(ModuleKey, FunctionName, HookID)
-    local Mod = GlobalTable[ModuleKey]
-    if not Mod or not GlobalTable._HookRegistry[ModuleKey] or not GlobalTable._HookRegistry[ModuleKey][FunctionName] then
+    if not Vortex._HookRegistry[ModuleKey] or not Vortex._HookRegistry[ModuleKey][FunctionName] then
         return
     end
 
     if HookID then
-        GlobalTable._HookRegistry[ModuleKey][FunctionName][HookID] = nil
+        Vortex._HookRegistry[ModuleKey][FunctionName][HookID] = nil
     else
-        GlobalTable._HookRegistry[ModuleKey][FunctionName] = {}
+        Vortex._HookRegistry[ModuleKey][FunctionName] = {}
     end
 end
 
 function Vortex.ViewHookIDs(ModuleKey, FunctionName)
-    if not GlobalTable._HookRegistry[ModuleKey] or not GlobalTable._HookRegistry[ModuleKey][FunctionName] then
+    if not Vortex._HookRegistry[ModuleKey] or not Vortex._HookRegistry[ModuleKey][FunctionName] then
         print(("[Vortex] No hooks found for %s -> %s"):format(ModuleKey, FunctionName))
         return
     end
 
     print(("[Vortex] Hooks for %s -> %s:"):format(ModuleKey, FunctionName))
-    for HookID, Data in pairs(GlobalTable._HookRegistry[ModuleKey][FunctionName]) do
+    for HookID, Data in pairs(Vortex._HookRegistry[ModuleKey][FunctionName]) do
         local Status = Data.Active and "ACTIVE" or "INACTIVE"
         local ConfigSTR = ""
         if Data.Config and next(Data.Config) then
@@ -507,7 +501,7 @@ function Vortex.ShowFunc(FuncName)
     local Results = {}
     local Searched = 0
 
-    for Key, Mod in pairs(GlobalTable) do
+    for Key, Mod in pairs(Vortex._LoadedModules) do
         if type(Key) == "string" and Key:sub(1, 1) == "@" then
             Searched = Searched + 1
             local Ok, HasFunc = pcall(function()
@@ -537,19 +531,13 @@ function Vortex.Get(Name)
         warn("[Vortex] Get requires a string module name")
         return nil
     end
-
-    local Env = globalEnv()
-    local Mod = Env[Name] or Env["@" .. Name]
-    if not Mod then
-        warn(("[Vortex] Module not found: %s"):format(Name))
-        return nil
-    end
-    return Mod
+    return Vortex._LoadedModules[Name] or Vortex._LoadedModules["@" .. Name]
 end
 
 --------------------------------------------------------------------------------
 -- 4. Extensible Adapter Registry
 --------------------------------------------------------------------------------
+
 function Vortex.RegisterAdapter(name, func)
     Vortex.Adapters[name] = func
 end
@@ -558,7 +546,6 @@ end
 -- 5. Universal Helper Utilities
 --------------------------------------------------------------------------------
 
--- Returns all parts from other players' characters within a specific radius of a position
 function Vortex.GetPartsInRange(position, radius, partName)
     local targets = {}
     partName = partName or "Head"
@@ -576,7 +563,6 @@ function Vortex.GetPartsInRange(position, radius, partName)
     return targets
 end
 
--- Get closest player in distance
 function Vortex.GetClosestPlayer(maxDistance, checkFunction)
     local localPlayer = Players.LocalPlayer
     local check = checkFunction or function(p)
@@ -605,7 +591,6 @@ function Vortex.GetClosestPlayer(maxDistance, checkFunction)
     return result
 end
 
--- Get target sorted/filtered by health
 function Vortex.GetHealthTarget(maxDistance, priority, checkFunction)
     local localPlayer = Players.LocalPlayer
     local check = checkFunction or function(p)
@@ -635,16 +620,15 @@ function Vortex.GetHealthTarget(maxDistance, priority, checkFunction)
                     lowestHealth = health
                     targetObj = player
                 end
-            else
-                closestDist = dist
-                targetObj = player
             end
+        else
+            closestDist = dist
+            targetObj = player
         end
     end
     return targetObj and { [targetObj.Name] = true } or nil
 end
 
--- Get closest target to mouse inside screen FOV
 function Vortex.GetMouseTarget(maxDistance, fov, partName, checkFunction)
     local localPlayer = Players.LocalPlayer
     local mouse = localPlayer:GetMouse()
@@ -686,65 +670,50 @@ function Vortex.GetMouseTarget(maxDistance, fov, partName, checkFunction)
     return closestTarget
 end
 
--- Adapter aliases (checks adapters table first for backward compatibility)
 function Vortex.MeleeWeapon(player)
     local adapter = Vortex.Adapters.GetMeleeWeapon
-    if adapter then
-        return adapter(player)
-    end
-    -- Fallback default
+    if adapter then return adapter(player) end
     player = player or Players.LocalPlayer
     local char = player.Character
     if char then
         for _, tool in ipairs(char:GetChildren()) do
-            if tool:IsA("Tool") then
-                return tool
-            end
+            if tool:IsA("Tool") then return tool end
         end
     end
 end
 
 function Vortex.RangedWeapon(player)
     local adapter = Vortex.Adapters.GetRangedWeapon
-    if adapter then
-        return adapter(player)
-    end
-    -- Fallback default
+    if adapter then return adapter(player) end
     player = player or Players.LocalPlayer
     local char = player.Character
     if char then
         for _, tool in ipairs(char:GetChildren()) do
-            if tool:IsA("Tool") then
-                return tool
-            end
+            if tool:IsA("Tool") then return tool end
         end
     end
 end
 
 function Vortex.PlayerState()
     local adapter = Vortex.Adapters.GetPlayerState
-    if adapter then
-        return adapter()
-    end
+    if adapter then return adapter() end
     return nil
 end
 
 function Vortex.SessionData(player)
     local adapter = Vortex.Adapters.GetSessionData
-    if adapter then
-        return adapter(player)
-    end
+    if adapter then return adapter(player) end
     return nil
 end
 
--- Prediction implementation using Kalman Math
-local Kalman = import("math/Kalman")
-function Vortex.Predict(part, origin, speed, drawLine, gravity)
-    return Kalman.Predict(part, origin, speed, drawLine, gravity)
+local Kalman = globalEnv().import and globalEnv().import("math/Kalman")
+if Kalman then
+    function Vortex.Predict(part, origin, speed, drawLine, gravity)
+        return Kalman.Predict(part, origin, speed, drawLine, gravity)
+    end
+    Vortex.Kalman = Kalman
 end
-Vortex.Kalman = Kalman
 
--- Backward compatibility aliases
 Vortex.ItemData = function(...)
     local adapter = Vortex.Adapters.GetItemData
     if adapter then return adapter(...) end
@@ -761,36 +730,29 @@ Vortex.ClosestPlayer = Vortex.GetClosestPlayer
 Vortex.HealthTarget = Vortex.GetHealthTarget
 Vortex.MouseTarget = Vortex.GetMouseTarget
 
---------------------------------------------------------------------------------
--- 6. Central Keybind Manager & Toggle Handler
---------------------------------------------------------------------------------
 UserInputService.InputBegan:Connect(function(input, processed)
     if processed then return end
     
-    local keybinds = GlobalTable.Keybinds
+    local keybinds = Vortex.Keybinds
     if not keybinds then return end
     
     for featureName, keycode in pairs(keybinds) do
         if input.KeyCode == keycode then
-            -- Determine state variable in global env
             local stateVar = featureName
             if featureName == "Desync" then
                 stateVar = "DesyncEnabled"
             end
             
-            local currentState = GlobalTable[stateVar]
+            local currentState = Vortex.State[stateVar]
             if currentState ~= nil then
                 local newState = not currentState
-                GlobalTable[stateVar] = newState
+                Vortex.State[stateVar] = newState
                 Vortex.Signals.FeatureToggled:Fire(featureName, newState)
             end
         end
     end
 end)
 
--- Register globals
-GlobalTable.Vortex = Vortex
-GlobalTable.Framework = Vortex
-table.insert(GlobalTable._LoaderCache, {Folders = Folders, Loader = Vortex})
+table.insert(Vortex._LoaderCache, {Folders = Folders, Loader = Vortex})
 
 return Vortex
