@@ -5,9 +5,9 @@
 
 local RangeExpander = {}
 
-function RangeExpander.Init(FrameWork)
+function RangeExpander.Init(Vortex)
     -- Hook melee slash hit raycast processor
-    FrameWork.Hook(
+    Vortex.Hook(
         "@MeleeWeaponClient",
         "onSlashRayHit",
         "RangeExpander",
@@ -22,7 +22,7 @@ function RangeExpander.Init(FrameWork)
 
             -- Query parts in range using framework-provided API
             local HitReach = getgenv().HitReach or 25
-            local Targets = FrameWork.GetPartsInRange(HitPosition, HitReach, "Head")
+            local Targets = Vortex.GetPartsInRange(HitPosition, HitReach, "Head")
             
             if Targets and #Targets > 0 then
                 for _, Target in ipairs(Targets) do
