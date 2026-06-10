@@ -10,10 +10,11 @@ function AntiParry.Init(Vortex)
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local LocalPlayer = Players.LocalPlayer
 
+    -- Global cache of player character models currently parrying
     getgenv().RecentParryPlayers = getgenv().RecentParryPlayers or {}
 
-    -- Bulletproof way to find the character model by climbing up the instance tree
-    local function GetCharacter(Obj)
+    -- Dynamic function to climb up the hierarchy until it finds a Model containing a Humanoid
+    local function FindCharacterFromInstance(Obj)
         local Current = Obj
         while Current and Current ~= workspace and Current ~= game do
             if Current:IsA("Model") and Current:FindFirstChildOfClass("Humanoid") then
@@ -30,16 +31,17 @@ function AntiParry.Init(Vortex)
         "FireServer",
         "Anti-Hit",
         function(Original, ...)
-            local Args = {...} 
+            local Args = {...}
 
             if getgenv().AntiParry and Args[2] == "MeleeDamage" then
-                local TargetPart = Args[4] 
-                local Character = GetCharacter(TargetPart)
+                local TargetPart = Args[4]
+                local PlayerModel = TargetPart and TargetPart.Parent
 
-                if Character and getgenv().RecentParryPlayers[Character.Name] then
+                if PlayerModel and getgenv().RecentParryPlayers[PlayerModel] then
+                    -- Rodux Toast Notification with the actual name of the suppressed player
                     local storeObj = Vortex.Get("RoduxStore")
                     if storeObj then
-                        local Message = ("Suppressed %s"):format(Character.Name)
+                        local Message = ("Suppressed %s"):format(PlayerModel.Name)
                         Vortex.Call("@ToastNotificationActionsClient", "add", "success", Message, 5, true, { BypassHook = false })(storeObj.store)
                     end
                     
@@ -47,12 +49,11 @@ function AntiParry.Init(Vortex)
                         soundObject = ReplicatedStorage.Shared.Assets.Sounds.Success2,
                         parent = workspace:FindFirstChild("Sounds") or workspace
                     })
-                    
-                    return -- Drop the remote call entirely
+                    return
                 end
             end
 
-            return Original(...)
+            return Original(table.unpack(Args))
         end,
         { Spy = false }
     )
@@ -67,15 +68,18 @@ function AntiParry.Init(Vortex)
             local Data = Args[1]
 
             if getgenv().AntiParry and Data and Data.soundObject and Data.soundObject.Name == "Parry" then
-                -- Dynamically resolve character from sound positioning asset parent
-                local Character = GetCharacter(Data.parent)
+                local Sound = Data.soundObject
                 
-                if Character and Character ~= LocalPlayer.Character then
-                    local TargetName = Character.Name
-                    getgenv().RecentParryPlayers[TargetName] = true
+                -- Dynamic lookup: looks upward through parents until it finds the character model
+                local PlayerModel = Data.parent and FindCharacterFromInstance(Data.parent)
 
+                if Sound and PlayerModel and PlayerModel ~= LocalPlayer.Character then
+                    -- Record target parry window state using the instance object as the key
+                    getgenv().RecentParryPlayers[PlayerModel] = true
+
+                    -- Reset parry window block state after 200ms
                     task.delay(0.2, function()
-                        getgenv().RecentParryPlayers[TargetName] = nil
+                        getgenv().RecentParryPlayers[PlayerModel] = nil
                     end)
                 end
             end
