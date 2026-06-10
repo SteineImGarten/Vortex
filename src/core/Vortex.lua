@@ -4,6 +4,8 @@
     predictive math, and decoupled game adapters.
 ]]
 
+setthreadidenity(2)
+
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
