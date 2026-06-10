@@ -4,7 +4,7 @@
     predictive math, and decoupled game adapters.
 ]]
 
-setthreadidenity(2)
+setthreadidentity(2)
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
