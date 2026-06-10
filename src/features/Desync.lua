@@ -5,21 +5,21 @@
 
 local Desync = {}
 
-function Desync.Init(FrameWork)
+function Desync.Init(Vortex)
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local Workspace = game:GetService("Workspace")
 
     -- Connect to the central FeatureToggled signal
-    FrameWork.Signals.FeatureToggled:Connect(function(featureName, state)
+    Vortex.Signals.FeatureToggled:Connect(function(featureName, state)
         if featureName == "Desync" then
             if state then
                 -- Play sound and UI notification
-                local storeObj = getgenv()["@RoduxStore"] or FrameWork.Get("RoduxStore")
+                local storeObj = Vortex.Get("RoduxStore")
                 if storeObj then
-                    FrameWork.Call("@ToastNotificationActionsClient", "add", "success", "Desynced", 5, true, { BypassHook = false })(storeObj.store)
+                    Vortex.Call("@ToastNotificationActionsClient", "add", "success", "Desynced", 5, true, { BypassHook = false })(storeObj.store)
                 end
                 
-                FrameWork.Call("@SoundHandler", "playSound", {
+                Vortex.Call("@SoundHandler", "playSound", {
                     soundObject = ReplicatedStorage.Shared.Assets.Sounds.Success2,
                     parent = Workspace.Sounds
                 })
