@@ -35,11 +35,11 @@ getgenv().FastSpawn = false
 
 -- 5. Repository and Workspace Configuration
 local owner = "SteineImGarten"
-local repo = "CW-Next"
+local repo = "Vortex"
 local branch = "main"
 
 -- Auto-detect local path in executor workspace folder
-local localPath = "Roblox Framework/src/"
+local localPath = "VortexFramework/src/"
 local isLocal = false
 
 if readfile and isfile then
