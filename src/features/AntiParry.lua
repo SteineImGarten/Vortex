@@ -1,6 +1,6 @@
 --[[
-    Combat Warriors - Anti-Parry (Max Speed Optimized)
-    Suppresses attack events directed at players who have active parry states.
+    Combat Warriors - Anti-Parry
+    Suppresses attack events directed at players who have active parry states (detected via parry sounds).
 ]]
 
 local AntiParry = {}
@@ -9,40 +9,9 @@ function AntiParry.Init(Vortex)
     local Players = game:GetService("Players")
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local LocalPlayer = Players.LocalPlayer
-    local task_delay = task.delay
-    local getgenv = getgenv
 
     -- Global cache of player character models currently parrying
     getgenv().RecentParryPlayers = getgenv().RecentParryPlayers or {}
-
-    -- Extrem schneller, interner Lua-Cache für alle gegnerischen Charaktere
-    local EnemyCharacters = {}
-
-    local function addCharacter(player, character)
-        if player ~= LocalPlayer then
-            EnemyCharacters[character] = true
-        end
-    end
-
-    local function removeCharacter(character)
-        EnemyCharacters[character] = nil
-        getgenv().RecentParryPlayers[character] = nil
-    end
-
-    local function monitorPlayer(player)
-        if player.Character then addCharacter(player, player.Character) end
-        player.CharacterAdded:Connect(function(char) addCharacter(player, char) end)
-        player.CharacterRemoving:Connect(removeCharacter)
-    end
-
-    -- Bestehende Spieler indizieren
-    for _, player in ipairs(Players:GetPlayers()) do
-        monitorPlayer(player)
-    end
-    Players.PlayerAdded:Connect(monitorPlayer)
-    Players.PlayerRemoving:Connect(function(player)
-        if player.Character then removeCharacter(player.Character) end
-    end)
 
     -- Hook outgoing game events to block damage sent to parrying opponents
     Vortex.Hook(
@@ -51,22 +20,13 @@ function AntiParry.Init(Vortex)
         "Anti-Hit",
         function(Original, ...)
             local Args = {...}
-            local genv = getgenv()
 
-            if genv.AntiParry and Args[2] == "MeleeDamage" then
-                local Current = Args[4] -- TargetPart
-                local PlayerModel = nil
+            if getgenv().AntiParry and Args[2] == "MeleeDamage" then
+                local TargetPart = Args[4]
+                local PlayerModel = TargetPart and TargetPart.Parent
 
-                -- Findet das Character-Model blitzschnell im Cache, egal wie tief das TargetPart liegt
-                while Current do
-                    if EnemyCharacters[Current] then
-                        PlayerModel = Current
-                        break
-                    end
-                    Current = Current.Parent
-                end
-
-                if PlayerModel and genv.RecentParryPlayers[PlayerModel] then
+                if PlayerModel and getgenv().RecentParryPlayers[PlayerModel] then
+          
                     local storeObj = Vortex.Get("RoduxStore")
                     if storeObj then
                         local Message = ("Suppressed %s"):format(PlayerModel.Name)
@@ -77,7 +37,7 @@ function AntiParry.Init(Vortex)
                         soundObject = ReplicatedStorage.Shared.Assets.Sounds.Success2,
                         parent = workspace:FindFirstChild("Sounds") or workspace
                     })
-                    
+          
                     return
                 end
             end
@@ -95,27 +55,18 @@ function AntiParry.Init(Vortex)
         function(Original, ...)
             local Args = {...}
             local Data = Args[1]
-            local genv = getgenv()
 
-            if genv.AntiParry and Data and Data.soundObject and Data.soundObject.Name == "Parry" then
-                local Current = Data.parent
-                local PlayerModel = nil
+            if getgenv().AntiParry and Data and Data.soundObject and Data.soundObject.Name == "Parry" then
+                local Sound = Data.soundObject
+                local PlayerModel = Data.parent and Data.parent.Parent and Data.parent.Parent.Parent
 
-                -- Findet das Character-Model blitzschnell im Cache, egal wo der Sound abgespielt wird
-                while Current do
-                    if EnemyCharacters[Current] then
-                        PlayerModel = Current
-                        break
-                    end
-                    Current = Current.Parent
-                end
+                if Sound and PlayerModel and PlayerModel ~= LocalPlayer.Character then
+                    -- Record target parry window state
+                    getgenv().RecentParryPlayers[PlayerModel] = true
 
-                if PlayerModel then
-                    local Recent = genv.RecentParryPlayers
-                    Recent[PlayerModel] = true
-
-                    task_delay(0.2, function()
-                        Recent[PlayerModel] = nil
+                    -- Reset parry window block state after 200ms
+                    task.delay(0.35, function()
+                        getgenv().RecentParryPlayers[PlayerModel] = nil
                     end)
                 end
             end
