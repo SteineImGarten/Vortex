@@ -13,29 +13,52 @@ function AntiParry.Init(Vortex)
     -- Global cache of player character models currently parrying
     getgenv().RecentParryPlayers = getgenv().RecentParryPlayers or {}
 
-    -- Hook outgoing game events to block damage sent to parrying opponents
+    -- Hook outgoing game events to block or delay damage sent to parrying opponents
     Vortex.Hook(
         "@Network",
         "FireServer",
         "Anti-Hit",
         function(Original, ...)
-
-            if getgenv().AntiParry and select(2, ...) == "MeleeDamage" then
-                local TargetPart = select(4, ...)
+            local Args = {...}
+            
+            if getgenv().AntiParry and Args[1] == "MeleeDamage" then
+                local TargetPart = Args[3] -- Shifted index based on FireServer(self, RemoteName, ...)
                 local PlayerModel = TargetPart and TargetPart.Parent
 
-                if PlayerModel and getgenv().RecentParryPlayers[PlayerModel] then
-                    local storeObj = Vortex.Get("RoduxStore")
-                    if storeObj then
-                        local Message = ("Suppressed %s"):format(PlayerModel.Name)
-                        Vortex.Call("@ToastNotificationActionsClient", "add", "success", Message, 5, true, { BypassHook = false })(storeObj.store)
+                if PlayerModel then
+                    -- If they are already parrying, suppress the hit completely right away
+                    if getgenv().RecentParryPlayers[PlayerModel] then
+                        local storeObj = Vortex.Get("RoduxStore")
+                        if storeObj then
+                            local Message = ("Suppressed %s"):format(PlayerModel.Name)
+                            Vortex.Call("@ToastNotificationActionsClient", "add", "success", Message, 5, true, { BypassHook = false })(storeObj.store)
+                        end
+                        
+                        Vortex.Call("@SoundHandler", "playSound", {
+                            soundObject = ReplicatedStorage.Shared.Assets.Sounds.Success2,
+                            parent = workspace:FindFirstChild("Sounds") or workspace
+                        })
+                        return -- Block hit remote completely
                     end
-                    
-                    Vortex.Call("@SoundHandler", "playSound", {
-                        soundObject = ReplicatedStorage.Shared.Assets.Sounds.Success2,
-                        parent = workspace:FindFirstChild("Sounds") or workspace
-                    })
-                    return -- Block hit remote completely
+
+                    -- If they aren't parrying yet, delay the hit event by 100ms
+                    -- This gives the SoundHandler hook a window to detect a late parry and add them to the exclusion list
+                    task.delay(0.1, function()
+                        -- Double check if they managed to parry within that 100ms window
+                        if getgenv().AntiParry and getgenv().RecentParryPlayers[PlayerModel] then
+                            local storeObj = Vortex.Get("RoduxStore")
+                            if storeObj then
+                                local Message = ("Late Suppression on %s"):format(PlayerModel.Name)
+                                Vortex.Call("@ToastNotificationActionsClient", "add", "success", Message, 5, true, { BypassHook = false })(storeObj.store)
+                            end
+                            return -- Block the delayed hit from firing
+                        end
+                        
+                        -- Otherwise, fire the original remote safely
+                        Original(unpack(Args))
+                    end)
+
+                    return -- Prevent the immediate default fire execution
                 end
             end
 
