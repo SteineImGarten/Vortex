@@ -19,14 +19,13 @@ function AntiParry.Init(Vortex)
         "FireServer",
         "Anti-Hit",
         function(Original, ...)
-            local Args = {...}
-            
-            if getgenv().AntiParry and Args[1] == "MeleeDamage" then
-                local TargetPart = Args[3] -- Shifted index based on FireServer(self, RemoteName, ...)
+            -- Match your original exact parameter indexing via select()
+            if getgenv().AntiParry and select(2, ...) == "MeleeDamage" then
+                local TargetPart = select(4, ...)
                 local PlayerModel = TargetPart and TargetPart.Parent
 
                 if PlayerModel then
-                    -- If they are already parrying, suppress the hit completely right away
+                    -- If they are already parrying, drop the hit instantly
                     if getgenv().RecentParryPlayers[PlayerModel] then
                         local storeObj = Vortex.Get("RoduxStore")
                         if storeObj then
@@ -38,13 +37,15 @@ function AntiParry.Init(Vortex)
                             soundObject = ReplicatedStorage.Shared.Assets.Sounds.Success2,
                             parent = workspace:FindFirstChild("Sounds") or workspace
                         })
-                        return -- Block hit remote completely
+                        return -- Drop the call
                     end
 
-                    -- If they aren't parrying yet, delay the hit event by 100ms
-                    -- This gives the SoundHandler hook a window to detect a late parry and add them to the exclusion list
+                    -- Pack the tuple so it can be safely deferred inside the task thread
+                    local PackedArgs = table.pack(...)
+
+                    -- Defer the event fire execution by 100ms
                     task.delay(0.1, function()
-                        -- Double check if they managed to parry within that 100ms window
+                        -- Re-verify their parry state after the 100ms window has completed
                         if getgenv().AntiParry and getgenv().RecentParryPlayers[PlayerModel] then
                             local storeObj = Vortex.Get("RoduxStore")
                             if storeObj then
@@ -54,11 +55,11 @@ function AntiParry.Init(Vortex)
                             return -- Block the delayed hit from firing
                         end
                         
-                        -- Otherwise, fire the original remote safely
-                        Original(unpack(Args))
+                        -- Fire the original remote function with all original arguments intact
+                        Original(table.unpack(PackedArgs, 1, PackedArgs.n))
                     end)
 
-                    return -- Prevent the immediate default fire execution
+                    return -- Intercept and prevent the immediate default execution loop
                 end
             end
 
@@ -79,7 +80,18 @@ function AntiParry.Init(Vortex)
 
                 if PlayerModel and PlayerModel ~= LocalPlayer.Character then
                     getgenv().RecentParryPlayers[PlayerModel] = true
+
+                    local storeObj = Vortex.Get("RoduxStore")
+                    if storeObj then
+                        local Message = ("Suppressed in Exclusion List %s"):format(PlayerModel.Name)
+                        Vortex.Call("@ToastNotificationActionsClient", "add", "success", Message, 5, true, { BypassHook = false })(storeObj.store)
+                    end
                     
+                    Vortex.Call("@SoundHandler", "playSound", {
+                        soundObject = ReplicatedStorage.Shared.Assets.Sounds.Success2,
+                        parent = workspace:FindFirstChild("Sounds") or workspace
+                    })
+
                     task.delay(0.2, function()
                         getgenv().RecentParryPlayers[PlayerModel] = nil
                     end)
