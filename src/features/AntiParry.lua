@@ -12,15 +12,14 @@ function AntiParry.Init(Vortex)
 
     getgenv().RecentParryPlayers = getgenv().RecentParryPlayers or {}
 
-    -- Helper to safely resolve a character from any descendant part (handles accessories)
-    local function GetCharacterFromPart(Part)
-        if not Part then return nil end
-        local Player = Players:GetPlayerFromCharacter(Part.Parent)
-        if Player then return Part.Parent end
-        
-        local DoubleParent = Part.Parent and Part.Parent.Parent
-        if DoubleParent and Players:GetPlayerFromCharacter(DoubleParent) then
-            return DoubleParent
+    -- Bulletproof way to find the character model by climbing up the instance tree
+    local function GetCharacter(Obj)
+        local Current = Obj
+        while Current and Current ~= workspace and Current ~= game do
+            if Current:IsA("Model") and Current:FindFirstChildOfClass("Humanoid") then
+                return Current
+            end
+            Current = Current.Parent
         end
         return nil
     end
@@ -30,14 +29,14 @@ function AntiParry.Init(Vortex)
         "@Network",
         "FireServer",
         "Anti-Hit",
-        function(Original, Method, ...)
-            if getgenv().AntiParry and Method == "MeleeDamage" then
-                local Args = {...} 
-                local TargetPart = Args[2] 
-                local Character = GetCharacterFromPart(TargetPart)
+        function(Original, ...)
+            local Args = {...} 
+
+            if getgenv().AntiParry and Args[2] == "MeleeDamage" then
+                local TargetPart = Args[4] 
+                local Character = GetCharacter(TargetPart)
 
                 if Character and getgenv().RecentParryPlayers[Character.Name] then
-                    -- Dynamically passes the suppressed player's name into the toast
                     local storeObj = Vortex.Get("RoduxStore")
                     if storeObj then
                         local Message = ("Suppressed %s"):format(Character.Name)
@@ -49,11 +48,11 @@ function AntiParry.Init(Vortex)
                         parent = workspace:FindFirstChild("Sounds") or workspace
                     })
                     
-                    return
+                    return -- Drop the remote call entirely
                 end
             end
 
-            return Original(Method, ...)
+            return Original(...)
         end,
         { Spy = false }
     )
@@ -68,7 +67,8 @@ function AntiParry.Init(Vortex)
             local Data = Args[1]
 
             if getgenv().AntiParry and Data and Data.soundObject and Data.soundObject.Name == "Parry" then
-                local Character = GetCharacterFromPart(Data.parent)
+                -- Dynamically resolve character from sound positioning asset parent
+                local Character = GetCharacter(Data.parent)
                 
                 if Character and Character ~= LocalPlayer.Character then
                     local TargetName = Character.Name
