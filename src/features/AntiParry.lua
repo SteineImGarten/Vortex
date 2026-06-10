@@ -5,7 +5,7 @@
 
 local AntiParry = {}
 
-function AntiParry.Init(FrameWork)
+function AntiParry.Init(Vortex)
     local Players = game:GetService("Players")
     local LocalPlayer = Players.LocalPlayer
 
@@ -13,10 +13,10 @@ function AntiParry.Init(FrameWork)
     getgenv().RecentParryPlayers = getgenv().RecentParryPlayers or {}
 
     -- Hook outgoing game events to block damage sent to parrying opponents
-    FrameWork.Hook(
+    Vortex.Hook(
         "@Network",
         "FireServer",
-        "RangeExpander",
+        "Anti-Hit",
         function(Original, ...)
             local Args = {...}
 
@@ -36,7 +36,7 @@ function AntiParry.Init(FrameWork)
     )
 
     -- Hook sound cues to identify target parry triggers
-    FrameWork.Hook(
+    Vortex.Hook(
         "@SoundHandler",
         "playSound",
         "Anti-Parry",
