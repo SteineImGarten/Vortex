@@ -38,7 +38,7 @@ function PsmSignal:Connect(callback)
                 end
             end
         end
-    end
+    } -- Added the missing closing curly brace '}' here
     table.insert(self._connections, connection)
     return connection
 end
