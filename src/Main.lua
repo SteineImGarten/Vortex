@@ -1,5 +1,5 @@
 --[[
-    Vortex Framework - Main Bootstrapper
+    Vortex Framework - Main Bootstrapper (Production Build)
     Integrates the modular architecture components, handles initialization, and triggers hooks.
     Supports dynamic loading of all modules inside the features/ directory.
 ]]
@@ -8,7 +8,6 @@ local Main = {}
 
 local HttpService = game:GetService("HttpService")
 
--- Helper utility hardcoded to use the explicit request structure
 local function HttpRequest(url)
     local response = request({
         Url = url,
@@ -96,12 +95,12 @@ function Main.Start()
     local Settings = import("config/Settings")
     Settings.LoadDefaults()
 
-    -- 2. Load Core Framework APIs (registers adapters automatically via Framework.lua)
-    local Vortex = import("core/Framework")
+    -- 2. Load Core Framework APIs (Pfad angepasst auf core/Vortex)
+    local Vortex = import("core/Vortex")
     
-    -- 3. Configure folders directly on Vortex
+    -- 3. Configure Debug Mode
     Vortex.Debug(true)
-    Vortex.Global(getgenv())
+    -- Vortex.Global(getgenv()) -> Restlos gelöscht! Keine globale Spuren-Verteilung mehr.
     
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
     Vortex.Folders({
@@ -110,7 +109,7 @@ function Main.Start()
         ReplicatedStorage.Shared.Vendor
     })
     
-    -- 4. Load Roblox Replicated Modules
+    -- 4. Load Roblox Replicated Modules (wandern jetzt direkt in Vortex._LoadedModules)
     Vortex.Load()
 
     -- 5. Trigger sound and toast notifying successful module loader hook
@@ -159,7 +158,6 @@ function Main.Start()
     getgenv().EXECUTED = true
     getgenv().Loaded_FIN = true
     
-    -- Fire the framework loaded PsmSignal event
     Vortex.Signals.FrameworkLoaded:Fire()
     print("[Vortex] Framework fully loaded and features initialized successfully!")
 end
