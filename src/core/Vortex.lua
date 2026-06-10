@@ -18,6 +18,7 @@ Vortex.Signals = {}
 --------------------------------------------------------------------------------
 -- 1. PsmSignal Class Implementation
 --------------------------------------------------------------------------------
+
 local PsmSignal = {}
 PsmSignal.__index = PsmSignal
 
@@ -40,7 +41,7 @@ function PsmSignal:Connect(callback)
                 end
             end
         end
-    } -- Added the missing closing curly brace '}' here
+    }
     table.insert(self._connections, connection)
     return connection
 end
@@ -78,23 +79,27 @@ end
 Vortex.PsmSignal = PsmSignal
 Vortex.Signal = PsmSignal
 
--- Globalize for Script-Ware / general UNC executor compatibility
 local globalEnv = getgenv or function() return _G end
 globalEnv().PsmSignal = PsmSignal
 globalEnv().Signal = PsmSignal
 
 --------------------------------------------------------------------------------
--- 2. Define Framework Core Signals
---------------------------------------------------------------------------------
+
 Vortex.Signals.FeatureToggled = PsmSignal.new()
 Vortex.Signals.FrameworkLoaded = PsmSignal.new()
 
 --------------------------------------------------------------------------------
--- 3. HookLoader Implementation (Directly under Vortex)
---------------------------------------------------------------------------------
+
+
 local GlobalTable = globalEnv()
+
 GlobalTable._LoaderCache = GlobalTable._LoaderCache or {}
 GlobalTable._HookRegistry = GlobalTable._HookRegistry or {}
+
+GlobalTable._InternalStorage = GlobalTable._InternalStorage or {
+    Originals = {},
+    Wrapped = {}
+}
 
 local Debug = false
 local SpyEnabled = false
@@ -358,17 +363,20 @@ function Vortex.Hook(ModuleKey, FunctionName, HookID, HookFunc, Config)
         return nil
     end
 
+    -- Setup internal registry for managing multiple hooks
+    GlobalTable._HookRegistry = GlobalTable._HookRegistry or {}
     GlobalTable._HookRegistry[ModuleKey] = GlobalTable._HookRegistry[ModuleKey] or {}
     GlobalTable._HookRegistry[ModuleKey][FunctionName] = GlobalTable._HookRegistry[ModuleKey][FunctionName] or {}
 
     local HookTable = GlobalTable._HookRegistry[ModuleKey][FunctionName]
+    local StorageKey = ModuleKey .. "." .. FunctionName
 
     if HookTable[HookID] then
         HookTable[HookID].Func = HookFunc
         HookTable[HookID].Config = Config
         HookTable[HookID].Priority = Config.Priority or 0
         HookTable[HookID].Active = true
-        return Mod._OriginalFunctions[FunctionName]
+        return GlobalTable._InternalStorage.Originals[StorageKey]
     end
 
     HookTable[HookID] = {
@@ -379,14 +387,11 @@ function Vortex.Hook(ModuleKey, FunctionName, HookID, HookFunc, Config)
         Priority = Config.Priority or 0
     }
 
-    Mod._OriginalFunctions = Mod._OriginalFunctions or {}
-    Mod._HookWrapped = Mod._HookWrapped or {}
-
-    if Mod._HookWrapped[FunctionName] then
-        return Mod._OriginalFunctions[FunctionName]
+    if GlobalTable._InternalStorage.Wrapped[StorageKey] then
+        return GlobalTable._InternalStorage.Originals[StorageKey]
     end
 
-    Mod._HookWrapped[FunctionName] = true
+    GlobalTable._InternalStorage.Wrapped[StorageKey] = true
 
     local function SafeCall(Func, ...)
         local ok, result = pcall(Func, ...)
@@ -413,7 +418,7 @@ function Vortex.Hook(ModuleKey, FunctionName, HookID, HookFunc, Config)
 
     local function Wrapper(...)
         local HookData = GetActiveHook()
-        local baseFunc = Mod._OriginalFunctions[FunctionName] or OrigFunc
+        local baseFunc = GlobalTable._InternalStorage.Originals[StorageKey] or OrigFunc
         
         if not HookData then
             return baseFunc(...)
@@ -421,7 +426,7 @@ function Vortex.Hook(ModuleKey, FunctionName, HookID, HookFunc, Config)
 
         local CFG = HookData.Config or {}
         local HookFn = HookData.Func
-        local key = ModuleKey .. "." .. FunctionName .. "." .. HookData.HookID
+        local key = StorageKey .. "." .. HookData.HookID
 
         if CFG.Spy then
             local now = tick()
@@ -438,15 +443,17 @@ function Vortex.Hook(ModuleKey, FunctionName, HookID, HookFunc, Config)
         return SafeCall(HookFn, baseFunc, ...)
     end
 
+    -- Apply the hook using internal environment tables only
     if oth and oth.hook and isCClosureFunc(OrigFunc) then
         local backup = oth.hook(OrigFunc, Wrapper)
-        Mod._OriginalFunctions[FunctionName] = backup
+        GlobalTable._InternalStorage.Originals[StorageKey] = backup
     elseif hookfunction then
         local nativeWrapper = newcclosure and newcclosure(Wrapper) or Wrapper
         local backup = hookfunction(OrigFunc, nativeWrapper)
-        Mod._OriginalFunctions[FunctionName] = backup
+        GlobalTable._InternalStorage.Originals[StorageKey] = backup
     else
-        Mod._OriginalFunctions[FunctionName] = OrigFunc
+        -- Fallback method (Warning: Modifies the table index directly if your platform lacks standard hook functions)
+        GlobalTable._InternalStorage.Originals[StorageKey] = OrigFunc
         Mod[FunctionName] = Wrapper
     end
 
@@ -454,7 +461,7 @@ function Vortex.Hook(ModuleKey, FunctionName, HookID, HookFunc, Config)
         print(("[Vortex] Hook applied: %s -> %s [ID=%s]"):format(ModuleKey, FunctionName, HookID))
     end
 
-    return Mod._OriginalFunctions[FunctionName]
+    return GlobalTable._InternalStorage.Originals[StorageKey]
 end
 
 function Vortex.UnHook(ModuleKey, FunctionName, HookID)
