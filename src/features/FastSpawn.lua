@@ -6,7 +6,7 @@
 local FastSpawn = {}
 local Connected = false
 
-function FastSpawn.Init(FrameWork)
+function FastSpawn.Init(Vortex)
     if Connected then return end
     Connected = true
 
