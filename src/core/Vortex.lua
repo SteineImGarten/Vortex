@@ -552,6 +552,51 @@ end
 --------------------------------------------------------------------------------
 
 -- Returns all parts from other players' characters within a specific radius of a position
+
+function Vortex.GetCharacter(Player)
+    Player = Player or Players.LocalPlayer
+    return Player and Player.Character
+end
+
+function Vortex.IsAlive(Player)
+    local Char = Vortex.GetCharacter(Player)
+    local Hum = Char and Char:FindFirstChildOfClass("Humanoid")
+    local Hrp = Char and Char:FindFirstChild("HumanoidRootPart")
+    return not not (Hum and Hrp and Hum.Health > 0)
+end
+
+function Vortex.GetTeam(Player)
+    Player = Player or Players.LocalPlayer
+    return Player and Player.Team
+end
+
+function Vortex.IsEnemy(Player)
+    local LocalPlayer = Players.LocalPlayer
+    if not Player or Player == LocalPlayer then return false end
+    
+    local LocalTeam = Vortex.GetTeam(LocalPlayer)
+    local TargetTeam = Vortex.GetTeam(Player)
+    
+    if LocalTeam and TargetTeam then
+        return LocalTeam ~= TargetTeam
+    end
+    return true
+end
+
+function Vortex.Notify(Type, Title, Text, Duration)
+    Type = Type or "success"
+    Duration = Duration or 5
+    
+    local StoreObj = Vortex.Get("RoduxStore")
+    if StoreObj then
+        pcall(function()
+            Vortex.Call("@ToastNotificationActionsClient", "add", Type, Text, Duration, true, { BypassHook = false })(StoreObj.store)
+        end)
+    else
+        print(("[Vortex Notification] [%s] %s: %s"):format(Type:upper(), tostring(Title or ""), tostring(Text)))
+    end
+end
+
 function Vortex.GetPartsInRange(position, radius, partName)
     local targets = {}
     partName = partName or "Head"
